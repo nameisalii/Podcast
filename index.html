@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast Listening Time Predictor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-6 text-center">Podcast Listening Time Predictor</h1>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Host Popularity (%)</label>
+                <input id="host_popularity" type="number" step="0.1" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Guest Popularity (%)</label>
+                <input id="guest_popularity" type="number" step="0.1" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Genre</label>
+                <select id="genre" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                    <option value="">Select Genre</option>
+                    <option value="Comedy">Comedy</option>
+                    <option value="News">News</option>
+                    <option value="Education">Education</option>
+                    <option value="True Crime">True Crime</option>
+                    <!-- Add more genres as needed -->
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Publication Day</label>
+                <select id="publication_day" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                    <option value="">Select Day</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                    <option value="Sunday">Sunday</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Episode Length (minutes)</label>
+                <input id="episode_length" type="number" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+            </div>
+            <button id="predict" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">Predict Listening Time</button>
+        </div>
+        <p id="result" class="mt-4 text-center text-lg font-semibold"></p>
+    </div>
+
+    <script>
+        async function loadPyodideAndPredict() {
+            let pyodide = await loadPyodide();
+            await pyodide.loadPackage(['micropip']);
+            await pyodide.runPythonAsync(`
+                import micropip
+                await micropip.install('scikit-learn')
+                await micropip.install('joblib')
+                import joblib
+                import pandas as pd
+                import numpy as np
+                from pyodide.http import pyfetch
+
+                async def load_model(url):
+                    response = await pyfetch(url)
+                    with open('model.pkl', 'wb') as f:
+                        f.write(await response.bytes())
+                    return joblib.load('model.pkl')
+
+                async def predict_listening_time(host_pop, guest_pop, genre, pub_day, ep_length):
+                    model = await load_model('https://drive.google.com/uc?export=download&id=18KYrb2HassCBo0X3xx47I5PkU9A_3blq')
+                    # Assume model expects one-hot encoded genre and publication day
+                    genres = ['Comedy', 'News', 'Education', 'True Crime']  # Update based on your model
+                    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    genre_encoded = [1 if g == genre else 0 for g in genres]
+                    day_encoded = [1 if d == pub_day else 0 for d in days]
+                    features = [host_pop, guest_pop, ep_length] + genre_encoded + day_encoded
+                    features = np.array(features).reshape(1, -1)
+                    prediction = model.predict(features)[0]
+                    return prediction
+            `);
+
+            document.getElementById('predict').addEventListener('click', async () => {
+                let host_pop = parseFloat(document.getElementById('host_popularity').value);
+                let guest_pop = parseFloat(document.getElementById('guest_popularity').value);
+                let genre = document.getElementById('genre').value;
+                let pub_day = document.getElementById('publication_day').value;
+                let ep_length = parseInt(document.getElementById('episode_length').value);
+                
+                if (!host_pop || !guest_pop || !genre || !pub_day || !ep_length) {
+                    document.getElementById('result').innerText = 'Please fill all fields.';
+                    return;
+                }
+
+                try {
+                    let result = await pyodide.runPythonAsync(`
+                        await predict_listening_time(${host_pop}, ${guest_pop}, '${genre}', '${pub_day}', ${ep_length})
+                    `);
+                    document.getElementById('result').innerText = `Predicted Listening Time: ${result.toFixed(2)} minutes`;
+                } catch (error) {
+                    document.getElementById('result').innerText = `Error: ${error.message}`;
+                }
+            });
+        }
+
+        loadPyodideAndPredict();
+    </script>
+</body>
+</html>

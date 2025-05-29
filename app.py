@@ -13,10 +13,12 @@ MODEL_PATH = "xgboost_model.pkl"
 
 def download_model(url, path):
     try:
-        response = requests.get(url)
+        print(f"Attempting to download model from {url}")
+        response = requests.get(url, stream=True)
         if response.status_code == 200:
             with open(path, 'wb') as f:
-                f.write(response.content)
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
             print("Model downloaded successfully")
         else:
             raise Exception(f"Failed to download model: HTTP {response.status_code}")
@@ -27,8 +29,12 @@ def download_model(url, path):
 if not os.path.exists(MODEL_PATH):
     download_model(MODEL_URL, MODEL_PATH)
 
-model = joblib.load(MODEL_PATH)
-print("XGBoost model loaded successfully")
+try:
+    model = joblib.load(MODEL_PATH)
+    print("XGBoost model loaded successfully")
+except Exception as e:
+    print(f"Error loading model: {e}")
+    raise
 
 @app.route('/')
 def index():
@@ -37,8 +43,11 @@ def index():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # Get input data from the request
+        print("Received prediction request:", request.get_json())
         data = request.get_json()
+        if not data:
+            raise Exception("No JSON data provided")
+
         host_pop = float(data['host_popularity'])
         guest_pop = float(data['guest_popularity'])
         genre = data['genre']
@@ -59,10 +68,11 @@ def predict():
 
         # Make prediction
         prediction = model.predict(features)[0]
+        print(f"Prediction: {prediction}")
 
-        # Return prediction as JSON
         return jsonify({'prediction': round(float(prediction), 2)})
     except Exception as e:
+        print(f"Prediction error: {e}")
         return jsonify({'error': str(e)}), 400
 
 if __name__ == '__main__':

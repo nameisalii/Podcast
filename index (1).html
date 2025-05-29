@@ -1,0 +1,132 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast Listening Time Predictor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-6 text-center">Podcast Listening Time Predictor</h1>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Host Popularity (%)</label>
+                <input id="host_popularity" type="number" step="0.1" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Guest Popularity (%)</label>
+                <input id="guest_popularity" type="number" step="0.1" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Genre</label>
+                <select id="genre" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                    <option value="">Select Genre</option>
+                    <option value="Comedy">Comedy</option>
+                    <option value="News">News</option>
+                    <option value="Education">Education</option>
+                    <option value="True Crime">True Crime</option>
+                    <!-- Add more genres as needed -->
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Publication Day</label>
+                <select id="publication_day" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                    <option value="">Select Day</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                    <option value="Sunday">Sunday</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Episode Length (minutes)</label>
+                <input id="episode_length" type="number" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+            </div>
+            <button id="predict" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">Predict Listening Time</button>
+        </div>
+        <p id="result" class="mt-4 text-center text-lg font-semibold"></p>
+    </div>
+
+    <script>
+        document.getElementById('predict').addEventListener('click', async () => {
+            const host_pop = parseFloat(document.getElementById('host_popularity').value);
+            const guest_pop = parseFloat(document.getElementById('guest_popularity').value);
+            const genre = document.getElementById('genre').value;
+            const pub_day = document.getElementById('publication_day').value;
+            const ep_length = parseInt(document.getElementById('episode_length').value);
+
+            if (!host_pop || !guest_pop || !genre || !pub_day || !ep_length) {
+                document.getElementById('result').innerText = 'Please fill all fields.';
+                return;
+            }
+
+            document.getElementById('result').innerText = 'Predicting...';
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host_popularity: host_pop,
+                        guest_popularity: guest_pop,
+                        genre: genre,
+                        publication_day: pub_day,
+                        episode_length: ep_length
+                    })
+                });
+                const result = await response.json();
+                if (result.error) {
+                    document.getElementById('result').innerText = `Error: ${result.error}`;
+                } else {
+                    document.getElementById('result').innerText = `Predicted Listening Time: ${result.prediction} minutes`;
+                }
+            } catch (error) {
+                document.getElementById('result').innerText = `Error: ${error.message}`;
+                console.error('Fetch error:', error);
+            }
+        });
+    </script>
+</body>
+</html>
